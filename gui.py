@@ -35,15 +35,18 @@ SCHEDULE
 class ScheduleObserver(QThread):
     signal = pyqtSignal(str)
 
-    def __init__(self, sender_email, receiver_email, password, selected_cities, sender_email_type, timer, url):
+    def __init__(self, sender_email, receiver_email, password, selected_cities, sender_email_type, timer, url, tg_api_token, tg_chat_id, does_send_to_tg):
         super().__init__()
         self.sender_email = sender_email
+        self.tg_api_token = tg_api_token
+        self.tg_chat_id = tg_chat_id
         self.receiver_email = receiver_email
         self.password = password
         self.selected_cities = selected_cities
         self.sender_email_type = sender_email_type
         self.timer = timer
         self.url = url
+        self.does_send_to_telegram = does_send_to_tg
 
     def run(self):
         import schedule
@@ -58,10 +61,10 @@ class ScheduleObserver(QThread):
     def observe(self):
         # call main
         if self.url != "":
-            print("Empty URL")
-            script.main(self.sender_email, self.receiver_email, self.password, self.selected_cities, self.sender_email_type, self.url)
+            # print("Empty URL")
+            script.main(self.sender_email, self.receiver_email, self.password, self.selected_cities, self.sender_email_type, self.tg_api_token, self.tg_chat_id, self.does_send_to_telegram, self.url)
         else:
-            script.main(self.sender_email, self.receiver_email, self.password, self.selected_cities, self.sender_email_type)
+            script.main(self.sender_email, self.receiver_email, self.password, self.selected_cities, self.sender_email_type, self.tg_api_token, self.tg_chat_id, self.does_send_to_telegram)
     
 """
 GUI SETUP
@@ -81,23 +84,28 @@ class App(QWidget):
         self.password = self.password_input.text()
         self.timer = self.timer_input.text()
         self.url = self.url_input.text()
+        self.tg_api_token = self.tg_api_token_input.text()
+        self.tg_chat_id = self.tg_chat_id_input.text()
+        self.does_send_to_telegram = False
         msg = QMessageBox()
-        # Empty inputs
-        if self.sender_email == "" or self.receiver_email == "" or self.password == "" or self.timer == "":
+        if self.tg_api_token != "" and self.tg_chat_id != "": self.does_send_to_telegram = True
+        print(self.does_send_to_telegram)
+        # Empty inputs for email
+        if not self.does_send_to_telegram and (self.sender_email == "" or self.receiver_email == "" or self.password == "" or self.timer == ""):
             msg.setIcon(QMessageBox.Warning)
             msg.setText("You left input(s) blank. Please try again ...")
             msg.setWindowTitle("Inputs Empty Error")
             msg.exec_()
             return
         # Email Format for both S/R
-        if is_valid_email(self.sender_email) == "WrongEmail" or is_valid_email(self.receiver_email) == "WrongEmail":
+        if not self.does_send_to_telegram and (is_valid_email(self.sender_email) == "WrongEmail" or is_valid_email(self.receiver_email) == "WrongEmail"):
             msg.setIcon(QMessageBox.Warning)
             msg.setText("Invalid sender or reciver email(s) format. Please check again ...")
             msg.setWindowTitle("Email Format Error")
             msg.exec_()
             return
         # Email Type for Sender side
-        if is_valid_email(self.sender_email) == "WrongType":
+        if not self.does_send_to_telegram and (is_valid_email(self.sender_email) == "WrongType"):
             msg.setIcon(QMessageBox.Warning)
             msg.setText("For now, only Gmail or Microsoft for sender email. Please change your type of email ...")
             msg.setWindowTitle("Email Type Error")
@@ -144,11 +152,13 @@ class App(QWidget):
         self.remove_button.setEnabled(False)
         self.city_combo_box.setEnabled(False)
         self.url_input.setEnabled(False)
+        self.tg_api_token_input.setEnabled(False)
+        self.tg_chat_id_input.setEnabled(False)
         
         """
         (2) Save user_info whenever you click confirm button
         """
-        self.save_user_info(self.sender_email, self.receiver_email, self.timer, self.selected_cities)
+        self.save_user_info(self.sender_email, self.receiver_email, self.timer, self.selected_cities, self.tg_api_token, self.tg_chat_id)
 
         """
         (3) Change components' state
@@ -160,7 +170,10 @@ class App(QWidget):
             self.selected_cities,
             is_valid_email(self.sender_email_input.text()),
             self.timer,
-            self.url
+            self.url,
+            self.tg_api_token,
+            self.tg_chat_id,
+            self.does_send_to_telegram
         )
         self.init_house_json_data()
         self.my_thread.start()
@@ -170,6 +183,14 @@ class App(QWidget):
         layout = QVBoxLayout()
         self.resize(400, 300)  # window size
         # font = QFont("Arial", 14)  # font size
+        # Telegram info : token
+        self.tg_api_token_input = QLineEdit()
+        layout.addWidget(QLabel("API-Token (Only applied for tg):"))
+        layout.addWidget(self.tg_api_token_input)
+        # Telegram info : chat-id
+        self.tg_chat_id_input = QLineEdit()
+        layout.addWidget(QLabel("Chat-Id (Only applied for tg):"))
+        layout.addWidget(self.tg_chat_id_input)
         # Sender
         self.sender_email_input = QLineEdit()
         layout.addWidget(QLabel("Sender Email:"))
@@ -236,12 +257,14 @@ class App(QWidget):
         # exist && has content
         return os.path.exists(house_json_file_name) and os.path.getsize(house_json_file_name) > 0
     
-    def save_user_info(self, sender, receiver, timer, selected_cities):
+    def save_user_info(self, sender, receiver, timer, selected_cities, token, chat_id):
         self.user_info = {
             'sender_email': sender,
             'receiver_email': receiver,
             'timer': timer,
-            'selected_cities': selected_cities
+            'selected_cities': selected_cities,
+            'token': token,
+            'chat_id': chat_id
         }
         with open('user_info.json', 'w') as f:
             json.dump(self.user_info, f)
